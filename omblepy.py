@@ -9,13 +9,14 @@ import pathlib
 import logging
 import csv
 import json
+import random
 
 #global constants
-parentService_UUID        = "ecbe3980-c9a2-11e1-b1bd-0002a5d5c51b"
+parentService_UUID        = "0000fe4a-0000-1000-8000-00805f9b34fb"
 
 #global variables
 bleClient           = None
-examplePairingKey   = bytearray.fromhex("deadbeaf12341234deadbeaf12341234") #arbitrary choise
+examplePairingKey   = bytearray.fromhex("00AAFFBB") #arbitrary choise
 deviceSpecific      = None                            #imported module for each device
 logger              = logging.getLogger("omblepy")
 
@@ -27,18 +28,19 @@ class bluetoothTxRxHandler:
     #BTLE Characteristic IDs
     deviceRxChannelUUIDs  = [
                                 "49123040-aee8-11e1-a74d-0002a5d5c51b",
-                                "4d0bf320-aee8-11e1-a0d9-0002a5d5c51b",
-                                "5128ce60-aee8-11e1-b84b-0002a5d5c51b",
-                                "560f1420-aee8-11e1-8184-0002a5d5c51b"
+                                #"4d0bf320-aee8-11e1-a0d9-0002a5d5c51b",
+                                #"5128ce60-aee8-11e1-b84b-0002a5d5c51b",
+                                #"560f1420-aee8-11e1-8184-0002a5d5c51b"
                             ]
     deviceTxChannelUUIDs  = [
                                 "db5b55e0-aee7-11e1-965e-0002a5d5c51b",
-                                "e0b8a060-aee7-11e1-92f4-0002a5d5c51b",
-                                "0ae12b00-aee8-11e1-a192-0002a5d5c51b",
-                                "10e1ba60-aee8-11e1-89e5-0002a5d5c51b"
+                                #"e0b8a060-aee7-11e1-92f4-0002a5d5c51b",
+                                #"0ae12b00-aee8-11e1-a192-0002a5d5c51b",
+                                #"10e1ba60-aee8-11e1-89e5-0002a5d5c51b"
                             ]
-    deviceDataRxChannelIntHandles = [0x360, 0x370, 0x380, 0x390]
+    deviceDataRxChannelIntHandles = [31] #[0x360, 0x370, 0x380, 0x390]
     deviceUnlock_UUID         = "b305b680-aee7-11e1-a730-0002a5d5c51b"
+
 
     def __init__(self, pairing = False):
         self.currentRxNotifyStateFlag   = False
@@ -65,9 +67,10 @@ class bluetoothTxRxHandler:
             rxChannelId = self.deviceDataRxChannelIntHandles.index(BleakGATTChar)
         else:
             rxChannelId = self.deviceDataRxChannelIntHandles.index(BleakGATTChar.handle)
+        print(rxBytes)
         self.rxRawChannelBuffer[rxChannelId] = rxBytes
 
-        logger.debug(f"rx ch{rxChannelId} < {convertByteArrayToHexString(rxBytes)}")
+        logger.info(f"rx ch{rxChannelId} < {convertByteArrayToHexString(rxBytes)}")
         if self.rxRawChannelBuffer[0]:                               #if there is data present in the first rx buffer
             packetSize       = self.rxRawChannelBuffer[0][0]
             requiredChannels = range((packetSize + 15) // 16)
@@ -110,30 +113,32 @@ class bluetoothTxRxHandler:
             commandCopy = command
             requiredTxChannels = range((len(command) + 15) // 16)
             for channelIdx in requiredTxChannels:
-                logger.debug(f"tx ch{channelIdx} > {convertByteArrayToHexString(commandCopy[:16])}")
+                logger.info(f"tx ch{channelIdx} > {convertByteArrayToHexString(commandCopy[:16])}")
                 await bleClient.write_gatt_char(self.deviceTxChannelUUIDs[channelIdx], commandCopy[:16])
                 commandCopy = commandCopy[16:]
 
             currentTimeout = timeoutS
-            while(self.rxFinishedFlag == False):
-                await asyncio.sleep(0.1)
-                currentTimeout -= 0.1
-                if(currentTimeout < 0):
-                    break
-            if(currentTimeout >= 0):
-                break
-            retries += 1
-            logger.warning(f"Transmission failed, count of retries: {retries} / 5")
-            if(retries >= 5):
-                ValueError("Same transmission failed 5 times, abort")
-                return
+            break
+            #while(self.rxFinishedFlag == False):
+            #    await asyncio.sleep(0.1)
+            #    currentTimeout -= 0.1
+            #    if(currentTimeout < 0):
+            #        break
+            #if(currentTimeout >= 0):
+            #    break
+            #retries += 1
+            #logger.warning(f"Transmission failed, count of retries: {retries} / 5")
+            #if(retries >= 5):
+            #    ValueError("Same transmission failed 5 times, abort")
+            #    return
 
     async def startTransmission(self):
         await self._enableRxChannelNotifyAndCallback()
         startDataReadout    = bytearray.fromhex("0800000000100018")
         await self._waitForRxOrRetry(startDataReadout)
         if(self.rxPacketType != bytearray.fromhex("8000")):
-            raise ValueError("invalid response to data readout start")
+            print(self.rxPacketType)
+            #raise ValueError("invalid response to data readout start")
 
     async def endTransmission(self):
         stopDataReadout         = bytearray.fromhex("080f000000000007")
@@ -177,16 +182,16 @@ class bluetoothTxRxHandler:
         dataReadCommand += b'\x00'
         dataReadCommand.append(xorCrc)
         await self._waitForRxOrRetry(dataReadCommand)
-        if(self.rxEepromAddress != address.to_bytes(2, 'big')):
-            raise ValueError(f"revieved packet address {self.rxEepromAddress} does not match requested address {address.to_bytes(2, 'big')}")
-        if(self.rxPacketType != bytearray.fromhex("8100")):
-            raise ValueError("Invalid packet type in eeprom read")
+        #if(self.rxEepromAddress != address.to_bytes(2, 'big')):
+        #    raise ValueError(f"revieved packet address {self.rxEepromAddress} does not match requested address {address.to_bytes(2, 'big')}")
+        #if(self.rxPacketType != bytearray.fromhex("8100")):
+        #    raise ValueError("Invalid packet type in eeprom read")
         return self.rxDataBytes
 
     async def writeContinuousEepromData(self, startAddress, bytesArrayToWrite, btBlockSize = 0x08):
         while(len(bytesArrayToWrite) != 0):
             nextSubblockSize = min(len(bytesArrayToWrite), btBlockSize)
-            logger.debug(f"write to {hex(startAddress)} size {hex(nextSubblockSize)}")
+            logger.info(f"write to {hex(startAddress)} size {hex(nextSubblockSize)}")
             await self._writeBlockEeprom(startAddress, bytesArrayToWrite[:nextSubblockSize])
             bytesArrayToWrite = bytesArrayToWrite[nextSubblockSize:]
             startAddress += nextSubblockSize
@@ -196,56 +201,97 @@ class bluetoothTxRxHandler:
         eepromBytesData = bytearray()
         while(bytesToRead != 0):
             nextSubblockSize = min(bytesToRead, btBlockSize)
-            logger.debug(f"read from {hex(startAddress)} size {hex(nextSubblockSize)}")
+            logger.info(f"read from {hex(startAddress)} size {hex(nextSubblockSize)}")
             eepromBytesData += await self._readBlockEeprom(startAddress, nextSubblockSize)
             startAddress    += nextSubblockSize
             bytesToRead     -= nextSubblockSize
         return eepromBytesData
 
     def _callbackForUnlockChannel(self, UUID_or_intHandle, rxBytes):
+        print("callback")
         self.rxDataBytes = rxBytes
         self.rxFinishedFlag = True
         return
 
     async def writeNewUnlockKey(self, newKeyByteArray = examplePairingKey):
-        if(len(newKeyByteArray) != 16):
-            raise ValueError(f"key has to be 16 bytes long, is {len(newKeyByteArray)}")
-            return
-        #enable key programming mode
-        await bleClient.start_notify(self.deviceUnlock_UUID, self._callbackForUnlockChannel)
-        self.rxFinishedFlag = False
-        await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x02' + b'\x00'*16, response=True)
-        while(self.rxFinishedFlag == False):
-            await asyncio.sleep(0.1)
-        deviceResponse = self.rxDataBytes
-        if(deviceResponse[:2] != bytearray.fromhex("8200")):
-            raise ValueError(f"Could not enter key programming mode. Has the device been started in pairing mode? Got response: {deviceResponse}")
-            return
-        #program new key
-        self.rxFinishedFlag = False
-        await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x00' + newKeyByteArray, response=True)
-        while(self.rxFinishedFlag == False):
-            await asyncio.sleep(0.1)
-        deviceResponse = self.rxDataBytes
-        if(deviceResponse[:2] != bytearray.fromhex("8000")):
-            raise ValueError(f"Failure to program new key. Response: {deviceResponse}")
-            return
-        await bleClient.stop_notify(self.deviceUnlock_UUID)
-        logger.info(f"Paired device successfully with new key {newKeyByteArray}.")
-        logger.info("From now on you can connect omit the -p flag, even on other PCs with different bluetooth-mac-addresses.")
-        return
+         print('start notify...')
+         print(self.deviceUnlock_UUID)
+         service = bleClient.services.get_service('0000fe4a-0000-1000-8000-00805f9b34fb')
+         characteristic = service.get_characteristic(self.deviceUnlock_UUID)
+         print(characteristic)
+         await bleClient.start_notify(self.deviceUnlock_UUID, self._callbackForUnlockChannel)
+         self.rxFinishedFlag = False
+
+         print('write gatt char...')
+         await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x11' + newKeyByteArray, response=True)
+         print('wait...')
+         #while True:
+         #    for x in [a, b, c]:
+         #        print(x.hex())
+         #        await asyncio.sleep(.5 + random.random())
+         #        if self.rxFinishedFlag: break
+
+         deviceResponse = self.rxDataBytes
+         print(deviceResponse)
+         #if(deviceResponse[:2] != bytearray.fromhex("9100")):
+         #    raise ValueError(f"Failure to program new key. Response: {deviceResponse}")
+         #    return
+         print('stop notify')
+         await bleClient.stop_notify(self.deviceUnlock_UUID)
+         logger.info(f"Paired device successfully with new key {newKeyByteArray}.")
+         logger.info("From now on you can connect omit the -p flag, even on other PCs with different bluetooth-mac-addresses.")
+         return
+
+    #async def writeNewUnlockKey(self, newKeyByteArray = examplePairingKey):
+    #    if(len(newKeyByteArray) != 16):
+    #        raise ValueError(f"key has to be 16 bytes long, is {len(newKeyByteArray)}")
+    #        return
+    #    #enable key programming mode
+    #    print('start notify...')
+    #    self.rxFinishedFlag = False
+    #    await bleClient.start_notify(self.deviceUnlock_UUID, self._callbackForUnlockChannel)
+    #    print('start write gatt char...')
+    #    await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x02' + b'\x00', response=True)
+    #    print('wait...')
+    #    while(self.rxFinishedFlag == False):
+    #        await asyncio.sleep(0.1)
+    #    deviceResponse = self.rxDataBytes
+    #    if(deviceResponse[:2] != bytearray.fromhex("8200")):
+    #        raise ValueError(f"Could not enter key programming mode. Has the device been started in pairing mode? Got response: {deviceResponse}")
+    #        return
+    #    #program new key
+    #    self.rxFinishedFlag = False
+    #    print('write gatt char...')
+    #    await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x00' + newKeyByteArray, response=True)
+    #    print('wait...')
+    #    while(self.rxFinishedFlag == False):
+    #        await asyncio.sleep(0.1)
+    #    deviceResponse = self.rxDataBytes
+    #    if(deviceResponse[:2] != bytearray.fromhex("8000")):
+    #        raise ValueError(f"Failure to program new key. Response: {deviceResponse}")
+    #        return
+    #    print('stop notify...')
+    #    await bleClient.stop_notify(self.deviceUnlock_UUID)
+    #    logger.info(f"Paired device successfully with new key {newKeyByteArray}.")
+    #    logger.info("From now on you can connect omit the -p flag, even on other PCs with different bluetooth-mac-addresses.")
+    #    return
 
     async def unlockWithUnlockKey(self, keyByteArray = examplePairingKey):
+        print("unlockWithUnlockKey")
         await bleClient.start_notify(self.deviceUnlock_UUID, self._callbackForUnlockChannel)
+        print("unlockWithUnlockKey 2")
         self.rxFinishedFlag = False
         await bleClient.write_gatt_char(self.deviceUnlock_UUID, b'\x01' + keyByteArray, response=True)
+        print("unlockWithUnlockKey 3")
         while(self.rxFinishedFlag == False):
             await asyncio.sleep(0.1)
+        print("unlockWithUnlockKey 4")
         deviceResponse = self.rxDataBytes
         if(deviceResponse[:2] !=  bytearray.fromhex("8100")):
             raise ValueError(f"entered pairing key does not match stored one.")
             return
         await bleClient.stop_notify(self.deviceUnlock_UUID)
+        print("unlockWithUnlockKey 5")
         return
 
 def readCsv(filename):
@@ -363,24 +409,27 @@ async def main():
         await asyncio.sleep(0.5)
         await bleClient.pair(protection_level = 2)
         #verify that the device is an omron device by checking presence of certain bluetooth services
+        #for service in bleClient.services:
+        #    print(service)
         if parentService_UUID not in [service.uuid for service in bleClient.services]:
-            raise OSError("""Some required bluetooth attributes not found on this ble device.
-                             This means that either, you connected to a wrong device,
-                             or that your OS has a bug when reading BT LE device attributes (certain linux versions).""")
-            return
+           raise OSError("""Some required bluetooth attributes not found on this ble device.
+                            This means that either, you connected to a wrong device,
+                            or that your OS has a bug when reading BT LE device attributes (certain linux versions).""")
+           return
         bluetoothTxRxObj = bluetoothTxRxHandler()
-        if(args.pair):
-            await bluetoothTxRxObj.writeNewUnlockKey()
-            #this seems to be necessary when the device has not been paired to any device
-            await bluetoothTxRxObj.startTransmission()
-            await bluetoothTxRxObj.endTransmission()
-        else:
-            logger.info("communication started")
-            devSpecificDriver = deviceSpecific.deviceSpecificDriver()
-            allRecs = await devSpecificDriver.getRecords(btobj = bluetoothTxRxObj, useUnreadCounter = args.newRecOnly, syncTime = args.timeSync)
-            logger.info("communication finished")
-            appendCsv(allRecs)
-            saveUBPMJson(allRecs)
+        #if(args.pair):
+        #    print('write new unlock key...')
+        #    await bluetoothTxRxObj.writeNewUnlockKey()
+        #    #this seems to be necessary when the device has not been paired to any device
+        #    await bluetoothTxRxObj.startTransmission()
+        #    await bluetoothTxRxObj.endTransmission()
+        #else:
+        logger.info("communication started")
+        devSpecificDriver = deviceSpecific.deviceSpecificDriver()
+        allRecs = await devSpecificDriver.getRecords(btobj = bluetoothTxRxObj, useUnreadCounter = args.newRecOnly, syncTime = args.timeSync)
+        logger.info("communication finished")
+        appendCsv(allRecs)
+        saveUBPMJson(allRecs)
     finally:
         logger.info("unpair and disconnect")
         if bleClient.is_connected:
