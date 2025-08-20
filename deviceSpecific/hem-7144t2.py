@@ -21,10 +21,9 @@ class deviceSpecificDriver(sharedDeviceDriverCode):
     #AsettingsTimeSyncBytes           = [0x14, 0x1e]
 
     def deviceSpecific_ParseRecordFormat(self, singleRecordAsByteArray):
-        #recordDict["mov"]      = self._bytearrayBitsToInt(singleRecordAsByteArray, 32, 32)
-        #recordDict["ihb"]      = self._bytearrayBitsToInt(singleRecordAsByteArray, 33, 33)
-
         recordDict             = dict()
+        recordDict["mov"]      = 0
+        recordDict["ihb"]      = 0
         recordDict["sys"]      = self._bytearrayBitsToInt(singleRecordAsByteArray, 0, 7) + 25
         recordDict["dia"]      = self._bytearrayBitsToInt(singleRecordAsByteArray, 8, 15)
         recordDict["bpm"]      = self._bytearrayBitsToInt(singleRecordAsByteArray, 16, 23)
